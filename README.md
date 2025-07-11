@@ -1,6 +1,15 @@
-# FatSecret API Explorer
+# FatSecret Food Tracker
 
-A Node.js terminal application for exploring the FatSecret API with an interactive terminal UI built using React and Ink.
+A modern web application for tracking your daily food intake using the FatSecret API. Built with Node.js, Express, React, and TypeScript.
+
+## Features
+
+- 🔐 **OAuth Authentication** with FatSecret API
+- 📊 **Daily Nutrition Dashboard** with calorie and macronutrient tracking
+- 🔍 **Smart Food Search** with typeahead functionality
+- 📝 **Food Diary** for adding and managing food entries
+- 💡 **Nutrition Facts** display with serving size calculations
+- 🎨 **Modern UI** with responsive design
 
 ## Prerequisites
 
@@ -9,119 +18,104 @@ A Node.js terminal application for exploring the FatSecret API with an interacti
 
 ## Quick Start
 
-1. **Install dependencies:**
+1. **Get FatSecret API credentials:**
+   - Visit https://platform.fatsecret.com/api/
+   - Create a developer account
+   - Create a new application to get your Consumer Key and Consumer Secret
+
+2. **Install dependencies:**
    ```bash
    npm install
    ```
 
-2. **Run the application:**
+3. **Configure environment variables:**
    ```bash
-   npm start
+   cp .env.example .env
+   # Edit .env with your FatSecret API credentials
    ```
 
-3. **For development with auto-restart:**
+4. **Run the application:**
    ```bash
-   npm run dev
+   npm run dev:full
    ```
+   This will start both the backend server (port 3000) and frontend development server (port 5173)
 
-4. **Use the interactive UI:**
-   - **Enter**: Navigate to details screen
-   - **H**: Return to home screen
-   - **Q**: Exit the application
+5. **Open your browser:**
+   - Go to http://localhost:5173
+   - Click "Login with FatSecret" to authenticate
 
-## Development with Live Reload
+## Development Scripts
 
-The app supports several development modes with automatic restart when you make changes:
+- `npm run dev` - Start backend server with auto-restart
+- `npm run dev:client` - Start frontend development server
+- `npm run dev:full` - Start both backend and frontend servers
+- `npm run build` - Build the application for production
+- `npm start` - Start the production server
 
-### Standard Development (with TypeScript compilation)
-```bash
-npm run dev              # Full logging
-npm run dev:clean        # No logging (clean UI)
-npm run dev:file         # Log to file
-npm run dev:debug        # Debug mode
-```
+## API Endpoints
 
-### Fast Development (no compilation step)
-```bash
-npm run dev:fast         # Fast restart with full logging
-npm run dev:fast:clean   # Fast restart with clean UI
-```
+### Authentication
+- `GET /auth/login` - Initiate OAuth login flow
+- `GET /auth/callback` - Handle OAuth callback
+- `GET /auth/status` - Check authentication status
+- `POST /auth/logout` - Logout user
 
-### Features:
-- **Auto-restart**: App restarts automatically when you save changes
-- **File watching**: Monitors `.ts`, `.tsx`, `.js`, `.jsx`, and `.json` files
-- **Smart restart**: Only restarts when necessary
-- **Manual restart**: Type `rs` and press Enter to restart manually
-
-### Tips for Development:
-- Use `npm run dev:clean` for a clean UI during development
-- Use `npm run dev:fast` for faster iteration (no TypeScript compilation)
-- Check the terminal for restart notifications
-
-## Troubleshooting
-
-- **UI not rendering**: Make sure your terminal supports Unicode and colors
-- **Import errors**: Ensure all dependencies are installed with `npm install`
-
-## Features
-
-- **Interactive Terminal UI**: Built with Ink and React for a modern CLI experience
-- **Screen Navigation**: Multi-screen application with routing
-- **Parameter Passing**: Pass data between screens
-- **Clean Architecture**: Functional programming approach with barrel exports
-- **TypeScript Support**: Full type safety throughout the application
+### Food API
+- `GET /api/foods/search?q=query` - Search for foods
+- `GET /api/foods/:foodId` - Get food details
+- `GET /api/diary` - Get today's diary entries
+- `GET /api/diary/:date` - Get diary entries for specific date
+- `POST /api/diary` - Add food to diary
 
 ## Project Structure
 
 ```
 src/
-├── createApplication.ts        # Application factory function
-├── index.ts                    # Main application entry point
+├── server.ts                   # Express server setup
+├── types/
+│   └── express.d.ts           # Type definitions for Express
 ├── services/
-│   └── index.ts                # Service exports
-├── ui/
-│   ├── Application.tsx         # Main React application component
-│   ├── Router.tsx              # Screen routing and navigation
-│   ├── ServiceProvider.tsx     # Context provider for services
-│   ├── components/
-│   │   ├── Home.tsx            # Home screen component
-│   │   ├── Details.tsx         # Details screen component
-│   │   └── index.ts            # Component barrel exports
-│   ├── hooks/
-│   │   └── index.ts            # Custom hooks exports
-│   └── index.ts                # UI exports
-└── utils/
-    ├── args.ts                 # Command line argument parsing
-    ├── help.ts                 # Help text generation
-    ├── logger.ts               # Logging utilities
-    ├── manufacturer.ts         # Manufacturer information
-    └── index.ts                # Utility exports
+│   ├── FatSecretAPI.ts        # FatSecret API client
+│   └── index.ts               # Service exports
+├── routes/
+│   ├── auth.ts                # Authentication routes
+│   └── api.ts                 # API routes
+├── client/                    # React frontend
+│   ├── main.tsx               # Frontend entry point
+│   ├── App.tsx                # Main React component
+│   ├── services/
+│   │   └── api.ts             # Frontend API client
+│   └── components/
+│       ├── LoginPage.tsx      # Login page component
+│       ├── Dashboard.tsx      # Dashboard component
+│       └── FoodSearch.tsx     # Food search component
+└── utils/                     # Utility functions
+    ├── args.ts                # Command line argument parsing
+    ├── help.ts                # Help text generation
+    ├── logger.ts              # Logging utilities
+    └── index.ts               # Utility exports
 ```
 
-### Module Responsibilities
+## How It Works
 
-- **Router**: Manages screen navigation and parameter passing between screens
-- **Components**: React components for each screen (Home, Details)
-- **Services**: Business logic and API integration (to be implemented)
-- **Utils**: Utility functions for argument parsing, logging, and help text
-- **Application**: Main application factory and lifecycle management
+1. **OAuth Flow**: User clicks login → redirected to FatSecret → grants permissions → redirected back with tokens
+2. **Dashboard**: Shows today's food entries with nutrition totals
+3. **Food Search**: Typeahead search with debouncing → shows results on left, nutrition facts on right
+4. **Add Food**: Select serving size → calculate nutrition → add to diary
 
-## Architecture
+## Architecture Features
 
-The application follows a functional programming approach with:
+- **Express Backend**: RESTful API with session management
+- **React Frontend**: Modern SPA with component-based architecture
+- **TypeScript**: Full type safety throughout the application
+- **OAuth Integration**: Secure authentication with FatSecret API
+- **Responsive Design**: Works on desktop and mobile devices
 
-- **Barrel Exports**: All modules use named exports through index files
-- **Functional Factories**: Application creation through factory functions
-- **React Context**: State management through React Context API
-- **Screen Routing**: Multi-screen navigation with parameter passing
-- **Event-Driven**: Input handling through Ink's useInput hook
+## Troubleshooting
 
-## Extending
-
-- To add new screens, create components in `src/ui/components/` and add them to the router
-- To add new services, create them in `src/services/` and export through the barrel file
-- To add new utilities, create them in `src/utils/` and export through the barrel file
-- To modify the UI layout, update the components in `src/ui/components/`
+- **Authentication Issues**: Check your FatSecret API credentials in `.env`
+- **CORS Errors**: Make sure both servers are running on correct ports
+- **Build Errors**: Run `npm install` to ensure all dependencies are installed
 
 ---
 

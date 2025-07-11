@@ -1,0 +1,1 @@
+export { FatSecretAPI } from './FatSecretAPI.js';
