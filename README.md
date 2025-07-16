@@ -1,129 +1,187 @@
-# FatSecret API Explorer
+# FatSecret Food Diary CLI
 
-A Node.js terminal application for exploring the FatSecret API with an interactive terminal UI built using React and Ink.
-
-## Prerequisites
-
-- **Node.js ≥ 18**
-- **FatSecret API credentials** (Consumer Key and Consumer Secret)
-
-## Quick Start
-
-1. **Install dependencies:**
-   ```bash
-   npm install
-   ```
-
-2. **Run the application:**
-   ```bash
-   npm start
-   ```
-
-3. **For development with auto-restart:**
-   ```bash
-   npm run dev
-   ```
-
-4. **Use the interactive UI:**
-   - **Enter**: Navigate to details screen
-   - **H**: Return to home screen
-   - **Q**: Exit the application
-
-## Development with Live Reload
-
-The app supports several development modes with automatic restart when you make changes:
-
-### Standard Development (with TypeScript compilation)
-```bash
-npm run dev              # Full logging
-npm run dev:clean        # No logging (clean UI)
-npm run dev:file         # Log to file
-npm run dev:debug        # Debug mode
-```
-
-### Fast Development (no compilation step)
-```bash
-npm run dev:fast         # Fast restart with full logging
-npm run dev:fast:clean   # Fast restart with clean UI
-```
-
-### Features:
-- **Auto-restart**: App restarts automatically when you save changes
-- **File watching**: Monitors `.ts`, `.tsx`, `.js`, `.jsx`, and `.json` files
-- **Smart restart**: Only restarts when necessary
-- **Manual restart**: Type `rs` and press Enter to restart manually
-
-### Tips for Development:
-- Use `npm run dev:clean` for a clean UI during development
-- Use `npm run dev:fast` for faster iteration (no TypeScript compilation)
-- Check the terminal for restart notifications
-
-## Troubleshooting
-
-- **UI not rendering**: Make sure your terminal supports Unicode and colors
-- **Import errors**: Ensure all dependencies are installed with `npm install`
+A comprehensive command-line interface for tracking your daily nutrition using the FatSecret API. Built with Node.js, TypeScript, and Ink for a beautiful terminal experience.
 
 ## Features
 
-- **Interactive Terminal UI**: Built with Ink and React for a modern CLI experience
-- **Screen Navigation**: Multi-screen application with routing
-- **Parameter Passing**: Pass data between screens
-- **Clean Architecture**: Functional programming approach with barrel exports
-- **TypeScript Support**: Full type safety throughout the application
+🔐 **Secure Authentication**
+- OAuth2 integration with FatSecret API
+- Automatic token management and refresh
+- Environment variable configuration
 
-## Project Structure
+📊 **Nutrition Dashboard**
+- View today's food entries and nutrition summary
+- Track progress toward daily nutrition goals
+- Visual progress indicators for calories, protein, carbs, and fat
 
+🔍 **Smart Food Search**
+- Real-time search with typeahead suggestions
+- Access to FatSecret's comprehensive food database
+- Detailed nutrition information for thousands of foods
+- Support for branded and generic foods
+
+📝 **Food Diary Management**
+- Add foods to breakfast, lunch, dinner, or snacks
+- Multiple serving size options
+- Customizable serving amounts
+- Automatic nutrition calculation
+
+## Prerequisites
+
+- Node.js 18.0.0 or higher
+- FatSecret API credentials (free registration)
+
+## Setup
+
+1. **Get FatSecret API Credentials**
+   - Visit [FatSecret Platform](https://platform.fatsecret.com/)
+   - Register for a free developer account
+   - Create a new application to get your Client ID and Client Secret
+
+2. **Clone and Install**
+   ```bash
+   git clone <repository-url>
+   cd fatsecret-cli
+   npm install
+   ```
+
+3. **Configure Environment**
+   ```bash
+   cp .env.example .env
+   # Edit .env with your FatSecret credentials
+   ```
+
+4. **Set Environment Variables**
+   ```bash
+   export FATSECRET_CLIENT_ID="your_client_id"
+   export FATSECRET_CLIENT_SECRET="your_client_secret"
+   ```
+
+## Usage
+
+### Development Mode
+```bash
+npm run dev
+```
+
+### Production Build and Run
+```bash
+npm run build
+npm start
+```
+
+### Available Scripts
+- `npm run dev` - Run in development mode with hot reload
+- `npm run build` - Build TypeScript to JavaScript
+- `npm start` - Build and run the application
+- `npm run lint` - Run ESLint
+- `npm run lint:fix` - Run ESLint with auto-fix
+
+## Application Flow
+
+1. **Home Screen** - Welcome and instructions
+2. **Authentication** - Secure login with FatSecret API
+3. **Dashboard** - View today's nutrition summary and food entries
+4. **Food Search** - Search for foods with real-time suggestions
+5. **Nutrition Details** - View detailed nutrition information
+6. **Add to Diary** - Select serving size, amount, and meal
+
+## Navigation
+
+### Global Controls
+- `ESC` - Go back or exit
+- `Q` - Quit application (from home screen)
+
+### Home Screen
+- `S` - Start the application
+- `D` - View details/help
+- `Q` - Quit
+
+### Dashboard
+- `A` - Add food to diary
+- `R` - Refresh data
+- `ESC` - Back to home
+
+### Food Search
+- Type to search (minimum 2 characters)
+- `↑/↓` - Navigate search results
+- `Enter` - View nutrition details
+- `ESC` - Back to dashboard
+
+### Nutrition Details
+- `Enter` - Add food to diary
+- `ESC` - Back to search results
+
+### Add to Diary
+- `↑/↓` - Navigate options
+- `Enter` - Confirm selection/proceed
+- `ESC` - Go back
+
+## API Integration
+
+This application uses the FatSecret Platform API with OAuth2 authentication. The following API endpoints are utilized:
+
+- **Authentication**: `https://oauth.fatsecret.com/connect/token`
+- **Food Search**: `foods.search`
+- **Food Details**: `food.get.v4`
+- **Autocomplete**: `foods.autocomplete` (Premier feature)
+
+### API Limitations
+
+- **Basic Tier**: Food search and details only
+- **Premier Tier**: Includes autocomplete, barcode scanning, and advanced features
+- **User Profiles**: Requires 3-legged OAuth for real user data storage
+
+## Development
+
+### Project Structure
 ```
 src/
-├── createApplication.ts        # Application factory function
-├── index.ts                    # Main application entry point
-├── services/
-│   └── index.ts                # Service exports
-├── ui/
-│   ├── Application.tsx         # Main React application component
-│   ├── Router.tsx              # Screen routing and navigation
-│   ├── ServiceProvider.tsx     # Context provider for services
-│   ├── components/
-│   │   ├── Home.tsx            # Home screen component
-│   │   ├── Details.tsx         # Details screen component
-│   │   └── index.ts            # Component barrel exports
-│   ├── hooks/
-│   │   └── index.ts            # Custom hooks exports
-│   └── index.ts                # UI exports
-└── utils/
-    ├── args.ts                 # Command line argument parsing
-    ├── help.ts                 # Help text generation
-    ├── logger.ts               # Logging utilities
-    ├── manufacturer.ts         # Manufacturer information
-    └── index.ts                # Utility exports
+├── types/          # TypeScript type definitions
+├── services/       # API integration and business logic
+├── ui/            # React components for CLI interface
+│   ├── components/ # Individual UI components
+│   └── Router.tsx  # Main navigation router
+├── utils/         # Utility functions
+└── index.ts       # Application entry point
 ```
 
-### Module Responsibilities
+### Technology Stack
+- **Node.js** - Runtime environment
+- **TypeScript** - Type-safe JavaScript
+- **Ink** - React for CLI applications
+- **Axios** - HTTP client for API requests
+- **ESLint** - Code linting and formatting
 
-- **Router**: Manages screen navigation and parameter passing between screens
-- **Components**: React components for each screen (Home, Details)
-- **Services**: Business logic and API integration (to be implemented)
-- **Utils**: Utility functions for argument parsing, logging, and help text
-- **Application**: Main application factory and lifecycle management
+## Troubleshooting
 
-## Architecture
+### Authentication Issues
+- Verify your FatSecret credentials are correct
+- Check that environment variables are properly set
+- Ensure your IP address is whitelisted (Premium accounts)
 
-The application follows a functional programming approach with:
+### API Rate Limits
+- FatSecret enforces rate limits on API calls
+- The application includes automatic retry logic
+- Consider upgrading to Premium for higher limits
 
-- **Barrel Exports**: All modules use named exports through index files
-- **Functional Factories**: Application creation through factory functions
-- **React Context**: State management through React Context API
-- **Screen Routing**: Multi-screen navigation with parameter passing
-- **Event-Driven**: Input handling through Ink's useInput hook
+### Network Issues
+- Check your internet connection
+- Verify firewall settings allow HTTPS requests
+- Try running with debug logging: `npm run dev:debug`
 
-## Extending
+## Contributing
 
-- To add new screens, create components in `src/ui/components/` and add them to the router
-- To add new services, create them in `src/services/` and export through the barrel file
-- To add new utilities, create them in `src/utils/` and export through the barrel file
-- To modify the UI layout, update the components in `src/ui/components/`
+1. Fork the repository
+2. Create a feature branch (`git checkout -b feature/amazing-feature`)
+3. Commit your changes (`git commit -m 'Add some amazing feature'`)
+4. Push to the branch (`git push origin feature/amazing-feature`)
+5. Open a Pull Request
 
----
+## License
 
-**This project is designed for clarity, maintainability, and extensibility with a modern interactive UI.**
-If you have questions or want to contribute, please open an issue or PR! 
+This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
+
+## Disclaimer
+
+This application is not officially affiliated with FatSecret. It's an independent project that uses the FatSecret API to provide nutrition tracking functionality. Please respect FatSecret's terms of service when using their API. 

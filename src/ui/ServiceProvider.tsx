@@ -1,5 +1,5 @@
 // implement react context provider for services
-import React, { createContext, useContext } from "react";
+import React, { createContext } from "react";
 
 export interface ServiceProvider {
 }

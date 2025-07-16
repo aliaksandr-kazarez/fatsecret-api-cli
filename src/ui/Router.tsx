@@ -1,87 +1,209 @@
-import { createContext, useCallback, useContext, useState } from 'react';
-import { Box, Text, useInput } from 'ink';
-import { Home, Details } from './components';
+import React, { useState } from 'react';
+import { useInput } from 'ink';
+import { FatSecretService } from '../services/index.js';
+import { Food, FoodDetails } from '../types/fatsecret.js';
+import { 
+  Home, 
+  Details, 
+  Auth, 
+  Dashboard, 
+  FoodSearch, 
+  AddToDiary 
+} from './components/index.js';
 
-export type Screens = 'home' | 'details';
+type Screen = 
+  | 'home' 
+  | 'details' 
+  | 'auth' 
+  | 'dashboard' 
+  | 'food-search' 
+  | 'add-to-diary';
 
-export interface RouterState {
-  screen: Screens;
-  params: Record<string, any>;
-  navigateTo: (screen: Screens, params?: Record<string, any>) => void;
+interface RouterState {
+  screen: Screen;
+  service?: FatSecretService;
+  selectedFood?: Food;
+  selectedFoodDetails?: FoodDetails;
 }
 
-export const RouterContext = createContext<RouterState>({ screen: 'home', params: {}, navigateTo: () => { } });
-
-export function useRouter(): RouterState {
-  return useContext(RouterContext);
-}
-
-function useRouterProvider() {
-  const [screen, setScreen] = useState<Screens>('home');
-  const [params, setParams] = useState<Record<string, any>>({});
-
-  const navigateTo = useCallback(function navigateTo(screen: Screens, params: Record<string, any> = {}) {
-    setScreen(screen);
-    setParams(params);
-  }, []);
-
-  return { screen, params, navigateTo };
-}
-
-export function useExit() {
-  return {
-    exit: useCallback((code: number = 0) => {
-      process.exit(code);
-    }, [])
-  };
-}
-
-export function Router() {
-  const { screen, params, navigateTo } = useRouterProvider();
-  const { exit } = useExit();
+export function Router(): React.JSX.Element {
+  const [state, setState] = useState<RouterState>({ screen: 'home' });
 
   useInput((input, key) => {
-    if (input === 'h') {
-      navigateTo('home');
-    } else if (input === 'q') {
-      exit()
+    // Global navigation handlers
+    if (key.escape && state.screen === 'home') {
+      process.exit(0);
+    }
+
+    // Screen-specific navigation handlers
+    switch (state.screen) {
+      case 'home':
+        if (input.toLowerCase() === 's' || input.toLowerCase() === '1') {
+          setState(prev => ({ ...prev, screen: 'auth' }));
+        } else if (input.toLowerCase() === 'q') {
+          process.exit(0);
+        }
+        break;
+
+      case 'dashboard':
+        if (input.toLowerCase() === 'a') {
+          setState(prev => ({ ...prev, screen: 'food-search' }));
+        } else if (input.toLowerCase() === 'r') {
+          // Refresh dashboard - handled by Dashboard component
+        } else if (key.escape) {
+          setState(prev => ({ ...prev, screen: 'home' }));
+        }
+        break;
+
+      case 'auth':
+        if (input.toLowerCase() === 'r') {
+          // Retry authentication - handled by Auth component
+        } else if (key.escape) {
+          setState(prev => ({ ...prev, screen: 'home' }));
+        }
+        break;
+
+      case 'food-search':
+        if (key.escape) {
+          setState(prev => ({ ...prev, screen: 'dashboard' }));
+        }
+        break;
+
+      case 'add-to-diary':
+        if (key.escape) {
+          setState(prev => ({ ...prev, screen: 'food-search' }));
+        }
+        break;
+
+      case 'details':
+        if (key.escape) {
+          setState(prev => ({ ...prev, screen: 'home' }));
+        }
+        break;
     }
   });
 
-  return (
-    <Box flexDirection="column" padding={1}>
-      <Box>
-        <Text color="cyan" bold>⚖️ Gourmetmiles Smart Scale BLE Client</Text>
-      </Box>
+  const handleAuthSuccess = (service: FatSecretService) => {
+    setState(prev => ({ 
+      ...prev, 
+      service, 
+      screen: 'dashboard' 
+    }));
+  };
 
-      <RouterContext.Provider value={{ screen, params, navigateTo }}>
-        {renderScreen(screen)}
-      </RouterContext.Provider>
+  const handleBackToHome = () => {
+    setState(prev => ({ ...prev, screen: 'home' }));
+  };
 
-      <Box>
-        <Text color="gray">{renderHelpText(screen)}</Text>
-      </Box>
-    </Box>
-  );
-}
+  const handleBackToDashboard = () => {
+    setState(prev => ({ ...prev, screen: 'dashboard' }));
+  };
 
-function renderHelpText(screen: Screens): string {
-  switch (screen) {
+  const handleFoodSelected = (food: Food, details?: FoodDetails) => {
+    setState(prev => ({ 
+      ...prev, 
+      selectedFood: food,
+      ...(details && { selectedFoodDetails: details }),
+      screen: 'add-to-diary' 
+    }));
+  };
+
+  const handleFoodAdded = () => {
+    setState(prev => {
+      const newState: RouterState = { 
+        ...prev, 
+        screen: 'dashboard' 
+      };
+      delete newState.selectedFood;
+      delete newState.selectedFoodDetails;
+      return newState;
+    });
+  };
+
+  const handleBackToSearch = () => {
+    setState(prev => {
+      const newState: RouterState = { 
+        ...prev, 
+        screen: 'food-search' 
+      };
+      delete newState.selectedFood;
+      delete newState.selectedFoodDetails;
+      return newState;
+    });
+  };
+
+  const handleAddFood = () => {
+    setState(prev => ({ ...prev, screen: 'food-search' }));
+  };
+
+  switch (state.screen) {
     case 'home':
-      return 'Q Exit';
-    case 'details':
-      return 'Q Exit';
-    default:
-      return '';
-  }
-};
+      return (
+        <Home 
+          onStartApp={() => setState(prev => ({ ...prev, screen: 'auth' }))}
+          onViewDetails={() => setState(prev => ({ ...prev, screen: 'details' }))}
+        />
+      );
 
-
-function renderScreen(screen: Screens): React.ReactNode {
-  switch (screen) {
-    case 'home':
-      return <Home />;
     case 'details':
       return <Details />;
+
+    case 'auth':
+      return (
+        <Auth 
+          onAuthSuccess={handleAuthSuccess}
+          onBack={handleBackToHome}
+        />
+      );
+
+    case 'dashboard':
+      if (!state.service) {
+        setState(prev => ({ ...prev, screen: 'auth' }));
+        return <Auth onAuthSuccess={handleAuthSuccess} onBack={handleBackToHome} />;
+      }
+      return (
+        <Dashboard 
+          service={state.service}
+          onAddFood={handleAddFood}
+          onBack={handleBackToHome}
+        />
+      );
+
+    case 'food-search':
+      if (!state.service) {
+        setState(prev => ({ ...prev, screen: 'auth' }));
+        return <Auth onAuthSuccess={handleAuthSuccess} onBack={handleBackToHome} />;
+      }
+      return (
+        <FoodSearch 
+          service={state.service}
+          onSelectFood={handleFoodSelected}
+          onBack={handleBackToDashboard}
+        />
+      );
+
+    case 'add-to-diary':
+      if (!state.service || !state.selectedFood) {
+        setState(prev => ({ ...prev, screen: 'dashboard' }));
+        return (
+          <Dashboard 
+            service={state.service!}
+            onAddFood={handleAddFood}
+            onBack={handleBackToHome}
+          />
+        );
+      }
+             return (
+         <AddToDiary 
+           service={state.service}
+           food={state.selectedFood}
+           {...(state.selectedFoodDetails && { foodDetails: state.selectedFoodDetails })}
+           onAdded={handleFoodAdded}
+           onCancel={handleBackToSearch}
+         />
+       );
+
+    default:
+      return <Home onStartApp={() => {}} onViewDetails={() => {}} />;
   }
-};
+}
