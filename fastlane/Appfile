@@ -1,0 +1,17 @@
+# The bundle identifier of your app
+app_identifier(ENV['APP_IDENTIFIER'] || "com.yourcompany.yourapp")
+
+# Your Apple ID email
+apple_id(ENV['APPLE_ID'] || "your.email@example.com")
+
+# For more information about the Appfile, see:
+#     https://docs.fastlane.tools/advanced/#appfile
+
+# Team ID for App Store Connect
+itc_team_id(ENV['ITC_TEAM_ID'] || "YOUR_TEAM_ID")
+
+# Team ID for Apple Developer Portal
+team_id(ENV['APPLE_TEAM_ID'] || "YOUR_TEAM_ID")
+
+# Optional: Specify a different Apple ID for the Apple Developer Portal
+# dev_portal_id "your-dev-portal@email.com"

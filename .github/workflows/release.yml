@@ -1,0 +1,450 @@
+name: Release Pipeline
+
+on:
+  push:
+    tags:
+      - 'v*.*.*'
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Release version (e.g., 1.0.0)'
+        required: true
+        type: string
+      release_type:
+        description: 'Type of release'
+        required: true
+        default: 'minor'
+        type: choice
+        options:
+        - patch
+        - minor
+        - major
+      dry_run:
+        description: 'Dry run (do not create actual release)'
+        required: false
+        default: false
+        type: boolean
+
+env:
+  XCODE_VERSION: '15.1'
+  IOS_SIMULATOR: 'iPhone 15'
+  IOS_VERSION: '17.2'
+
+jobs:
+  version-bump:
+    name: Version Bump & Documentation Update
+    runs-on: macos-14
+    outputs:
+      new_version: ${{ steps.version.outputs.new_version }}
+      changelog: ${{ steps.changelog.outputs.changelog }}
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          token: ${{ secrets.GITHUB_TOKEN }}
+          
+      - name: Setup Git
+        run: |
+          git config --global user.name "github-actions[bot]"
+          git config --global user.email "github-actions[bot]@users.noreply.github.com"
+          
+      - name: Install dependencies
+        run: |
+          # Install tools for version management
+          brew install jq yq
+          
+          # Install PlistBuddy alternative or use built-in plutil
+          which plutil || echo "plutil not found"
+          
+      - name: Determine version
+        id: version
+        run: |
+          if [ "${{ github.event_name }}" == "workflow_dispatch" ]; then
+            NEW_VERSION="${{ github.event.inputs.version }}"
+          else
+            # Extract version from tag
+            NEW_VERSION=${GITHUB_REF#refs/tags/v}
+          fi
+          
+          echo "new_version=$NEW_VERSION" >> $GITHUB_OUTPUT
+          echo "New version: $NEW_VERSION"
+          
+      - name: Update version in project files
+        run: |
+          NEW_VERSION="${{ steps.version.outputs.new_version }}"
+          
+          # Update Info.plist files
+          find . -name "Info.plist" -not -path "./build/*" -not -path "./DerivedData/*" | while read plist; do
+            echo "Updating version in $plist"
+            plutil -replace CFBundleShortVersionString -string "$NEW_VERSION" "$plist" || true
+            
+            # Update build number to current timestamp for uniqueness
+            BUILD_NUMBER=$(date +%Y%m%d%H%M)
+            plutil -replace CFBundleVersion -string "$BUILD_NUMBER" "$plist" || true
+          done
+          
+          # Update Package.swift if exists
+          if [ -f "Package.swift" ]; then
+            sed -i '' "s/version: \".*\"/version: \"$NEW_VERSION\"/" Package.swift || true
+          fi
+          
+          # Update project.pbxproj files
+          find . -name "project.pbxproj" | while read pbxproj; do
+            echo "Updating version in $pbxproj"
+            sed -i '' "s/MARKETING_VERSION = .*;/MARKETING_VERSION = $NEW_VERSION;/g" "$pbxproj" || true
+          done
+          
+      - name: Generate changelog
+        id: changelog
+        run: |
+          # Get the latest tag
+          LATEST_TAG=$(git describe --tags --abbrev=0 2>/dev/null || echo "")
+          
+          if [ -z "$LATEST_TAG" ]; then
+            echo "No previous tags found, generating changelog from first commit"
+            COMMIT_RANGE="$(git rev-list --max-parents=0 HEAD)..HEAD"
+          else
+            echo "Latest tag: $LATEST_TAG"
+            COMMIT_RANGE="$LATEST_TAG..HEAD"
+          fi
+          
+          echo "Generating changelog for range: $COMMIT_RANGE"
+          
+          # Generate changelog
+          cat > CHANGELOG_NEW.md << EOF
+          # Changelog
+          
+          ## [v${{ steps.version.outputs.new_version }}] - $(date +%Y-%m-%d)
+          
+          ### Added
+          EOF
+          
+          # Get commits with "feat:" or "add:" prefix
+          git log --oneline $COMMIT_RANGE | grep -E "(feat|add):" | sed 's/^[a-f0-9]* /- /' >> CHANGELOG_NEW.md || echo "- No new features" >> CHANGELOG_NEW.md
+          
+          cat >> CHANGELOG_NEW.md << EOF
+          
+          ### Changed
+          EOF
+          
+          # Get commits with "change:" or "update:" prefix
+          git log --oneline $COMMIT_RANGE | grep -E "(change|update|refactor):" | sed 's/^[a-f0-9]* /- /' >> CHANGELOG_NEW.md || echo "- No changes" >> CHANGELOG_NEW.md
+          
+          cat >> CHANGELOG_NEW.md << EOF
+          
+          ### Fixed
+          EOF
+          
+          # Get commits with "fix:" prefix
+          git log --oneline $COMMIT_RANGE | grep "fix:" | sed 's/^[a-f0-9]* /- /' >> CHANGELOG_NEW.md || echo "- No fixes" >> CHANGELOG_NEW.md
+          
+          cat >> CHANGELOG_NEW.md << EOF
+          
+          ### Security
+          EOF
+          
+          # Get commits with "security:" prefix
+          git log --oneline $COMMIT_RANGE | grep "security:" | sed 's/^[a-f0-9]* /- /' >> CHANGELOG_NEW.md || echo "- No security updates" >> CHANGELOG_NEW.md
+          
+          # If CHANGELOG.md exists, prepend new content
+          if [ -f "CHANGELOG.md" ]; then
+            # Skip the first line (# Changelog) and prepend new content
+            tail -n +2 CHANGELOG.md > CHANGELOG_OLD.md
+            cat CHANGELOG_NEW.md > CHANGELOG.md
+            echo "" >> CHANGELOG.md
+            cat CHANGELOG_OLD.md >> CHANGELOG.md
+            rm CHANGELOG_OLD.md
+          else
+            mv CHANGELOG_NEW.md CHANGELOG.md
+          fi
+          
+          rm -f CHANGELOG_NEW.md
+          
+          # Set changelog output for GitHub release
+          CHANGELOG_CONTENT=$(cat << 'EOF'
+          $(cat CHANGELOG.md | head -n 50)
+          EOF
+          )
+          echo "changelog<<EOF" >> $GITHUB_OUTPUT
+          echo "$CHANGELOG_CONTENT" >> $GITHUB_OUTPUT
+          echo "EOF" >> $GITHUB_OUTPUT
+          
+      - name: Update documentation
+        run: |
+          NEW_VERSION="${{ steps.version.outputs.new_version }}"
+          
+          # Update README if it contains version information
+          if [ -f "README.md" ]; then
+            # Update badge or version references
+            sed -i '' "s/version-[0-9]*\.[0-9]*\.[0-9]*/version-$NEW_VERSION/g" README.md || true
+            sed -i '' "s/v[0-9]*\.[0-9]*\.[0-9]*/v$NEW_VERSION/g" README.md || true
+          fi
+          
+          # Update any documentation files
+          find . -name "*.md" -not -path "./node_modules/*" -not -path "./build/*" | while read mdfile; do
+            # Update version references in documentation
+            sed -i '' "s/Version [0-9]*\.[0-9]*\.[0-9]*/Version $NEW_VERSION/g" "$mdfile" || true
+          done
+          
+      - name: Commit changes
+        if: github.event.inputs.dry_run != 'true'
+        run: |
+          git add .
+          git commit -m "chore: bump version to ${{ steps.version.outputs.new_version }}" || echo "No changes to commit"
+          git tag -a "v${{ steps.version.outputs.new_version }}" -m "Release version ${{ steps.version.outputs.new_version }}"
+          
+      - name: Push changes
+        if: github.event.inputs.dry_run != 'true'
+        run: |
+          git push origin HEAD
+          git push origin "v${{ steps.version.outputs.new_version }}"
+
+  build-release:
+    name: Build Release
+    runs-on: macos-14
+    needs: version-bump
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          ref: "v${{ needs.version-bump.outputs.new_version }}"
+          
+      - name: Setup Xcode
+        uses: maxim-lobanov/setup-xcode@v1
+        with:
+          xcode-version: ${{ env.XCODE_VERSION }}
+          
+      - name: Cache SPM dependencies
+        uses: actions/cache@v4
+        with:
+          path: |
+            .build
+            ~/Library/Developer/Xcode/DerivedData/**/SourcePackages
+          key: ${{ runner.os }}-spm-${{ hashFiles('**/Package.swift', '**/Package.resolved') }}
+          restore-keys: |
+            ${{ runner.os }}-spm-
+            
+      - name: Install certificates and provisioning profiles
+        if: github.event.inputs.dry_run != 'true'
+        env:
+          CERTIFICATES_P12: ${{ secrets.CERTIFICATES_P12 }}
+          CERTIFICATES_PASSWORD: ${{ secrets.CERTIFICATES_PASSWORD }}
+          PROVISIONING_PROFILE: ${{ secrets.PROVISIONING_PROFILE }}
+        run: |
+          # Create temporary keychain
+          security create-keychain -p "temp_password" temp.keychain
+          security default-keychain -s temp.keychain
+          security unlock-keychain -p "temp_password" temp.keychain
+          
+          # Import certificates if provided
+          if [ ! -z "$CERTIFICATES_P12" ]; then
+            echo "$CERTIFICATES_P12" | base64 --decode > certificates.p12
+            security import certificates.p12 -k temp.keychain -P "$CERTIFICATES_PASSWORD" -T /usr/bin/codesign
+            rm certificates.p12
+          fi
+          
+          # Install provisioning profile if provided
+          if [ ! -z "$PROVISIONING_PROFILE" ]; then
+            echo "$PROVISIONING_PROFILE" | base64 --decode > profile.mobileprovision
+            mkdir -p ~/Library/MobileDevice/Provisioning\ Profiles
+            cp profile.mobileprovision ~/Library/MobileDevice/Provisioning\ Profiles/
+            rm profile.mobileprovision
+          fi
+          
+      - name: Build and Archive
+        run: |
+          set -o pipefail
+          
+          # Create build directory
+          mkdir -p build
+          
+          if [ -f "*.xcworkspace" ]; then
+            WORKSPACE=$(find . -name "*.xcworkspace" | head -1)
+            xcodebuild archive \
+              -workspace "$WORKSPACE" \
+              -scheme "YourAppScheme" \
+              -configuration "Release" \
+              -archivePath "build/YourApp.xcarchive" \
+              -allowProvisioningUpdates \
+              | xcpretty
+          elif [ -f "*.xcodeproj" ]; then
+            PROJECT=$(find . -name "*.xcodeproj" | head -1)
+            xcodebuild archive \
+              -project "$PROJECT" \
+              -scheme "YourAppScheme" \
+              -configuration "Release" \
+              -archivePath "build/YourApp.xcarchive" \
+              -allowProvisioningUpdates \
+              | xcpretty
+          fi
+          
+      - name: Export IPA
+        run: |
+          # Create export options plist
+          cat > ExportOptions.plist << EOF
+          <?xml version="1.0" encoding="UTF-8"?>
+          <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+          <plist version="1.0">
+          <dict>
+              <key>method</key>
+              <string>app-store</string>
+              <key>teamID</key>
+              <string>${{ secrets.APPLE_TEAM_ID }}</string>
+              <key>uploadBitcode</key>
+              <false/>
+              <key>uploadSymbols</key>
+              <true/>
+              <key>signingStyle</key>
+              <string>automatic</string>
+          </dict>
+          </plist>
+          EOF
+          
+          # Export archive to IPA
+          xcodebuild -exportArchive \
+            -archivePath "build/YourApp.xcarchive" \
+            -exportPath "build/export" \
+            -exportOptionsPlist "ExportOptions.plist" \
+            | xcpretty
+            
+      - name: Upload Release Artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: release-artifacts-${{ needs.version-bump.outputs.new_version }}
+          path: |
+            build/YourApp.xcarchive
+            build/export/
+          retention-days: 90
+
+  test-release:
+    name: Test Release Build
+    runs-on: macos-14
+    needs: [version-bump, build-release]
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          ref: "v${{ needs.version-bump.outputs.new_version }}"
+          
+      - name: Setup Xcode
+        uses: maxim-lobanov/setup-xcode@v1
+        with:
+          xcode-version: ${{ env.XCODE_VERSION }}
+          
+      - name: Download Release Artifacts
+        uses: actions/download-artifact@v4
+        with:
+          name: release-artifacts-${{ needs.version-bump.outputs.new_version }}
+          path: build/
+          
+      - name: Validate IPA
+        run: |
+          if [ -f "build/export/YourApp.ipa" ]; then
+            echo "✅ IPA file exists"
+            ls -la build/export/
+            
+            # Extract and validate Info.plist from IPA
+            unzip -q "build/export/YourApp.ipa" -d temp_ipa
+            INFO_PLIST=$(find temp_ipa -name "Info.plist" | head -1)
+            
+            if [ -f "$INFO_PLIST" ]; then
+              VERSION=$(plutil -extract CFBundleShortVersionString raw "$INFO_PLIST" 2>/dev/null || echo "unknown")
+              BUILD=$(plutil -extract CFBundleVersion raw "$INFO_PLIST" 2>/dev/null || echo "unknown")
+              
+              echo "IPA Version: $VERSION"
+              echo "IPA Build: $BUILD"
+              
+              if [ "$VERSION" == "${{ needs.version-bump.outputs.new_version }}" ]; then
+                echo "✅ Version matches expected: $VERSION"
+              else
+                echo "❌ Version mismatch. Expected: ${{ needs.version-bump.outputs.new_version }}, Got: $VERSION"
+                exit 1
+              fi
+            else
+              echo "❌ Info.plist not found in IPA"
+              exit 1
+            fi
+            
+            rm -rf temp_ipa
+          else
+            echo "❌ IPA file not found"
+            exit 1
+          fi
+
+  create-release:
+    name: Create GitHub Release
+    runs-on: ubuntu-latest
+    needs: [version-bump, build-release, test-release]
+    if: github.event.inputs.dry_run != 'true'
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          ref: "v${{ needs.version-bump.outputs.new_version }}"
+          
+      - name: Download Release Artifacts
+        uses: actions/download-artifact@v4
+        with:
+          name: release-artifacts-${{ needs.version-bump.outputs.new_version }}
+          path: build/
+          
+      - name: Create GitHub Release
+        uses: actions/create-release@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          tag_name: "v${{ needs.version-bump.outputs.new_version }}"
+          release_name: "Release v${{ needs.version-bump.outputs.new_version }}"
+          body: |
+            ${{ needs.version-bump.outputs.changelog }}
+            
+            ## Installation
+            
+            Download the IPA file and install via Xcode or Apple Configurator.
+            
+            ## What's Changed
+            
+            See the changelog above for detailed changes in this release.
+          draft: false
+          prerelease: false
+          
+      - name: Upload IPA to Release
+        uses: actions/upload-release-asset@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          upload_url: ${{ steps.create_release.outputs.upload_url }}
+          asset_path: build/export/YourApp.ipa
+          asset_name: YourApp-v${{ needs.version-bump.outputs.new_version }}.ipa
+          asset_content_type: application/octet-stream
+
+  notify:
+    name: Notify Release
+    runs-on: ubuntu-latest
+    needs: [version-bump, create-release]
+    if: always() && github.event.inputs.dry_run != 'true'
+    steps:
+      - name: Notify Slack
+        if: needs.create-release.result == 'success'
+        uses: 8398a7/action-slack@v3
+        with:
+          status: success
+          text: |
+            🎉 iOS App Release v${{ needs.version-bump.outputs.new_version }} is now available!
+            
+            📱 Download: ${{ github.server_url }}/${{ github.repository }}/releases/tag/v${{ needs.version-bump.outputs.new_version }}
+        env:
+          SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
+          
+      - name: Notify on Failure
+        if: needs.create-release.result == 'failure'
+        uses: 8398a7/action-slack@v3
+        with:
+          status: failure
+          text: |
+            ❌ iOS App Release v${{ needs.version-bump.outputs.new_version }} failed!
+            
+            Please check the workflow logs: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        env:
+          SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
