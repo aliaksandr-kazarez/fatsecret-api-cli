@@ -1,0 +1,362 @@
+# Fastfile for iOS SwiftUI CI/CD Pipeline
+
+# This file contains the fastlane.tools configuration
+# You can find the documentation at https://docs.fastlane.tools
+#
+# For a list of all available actions, check out
+#     https://docs.fastlane.tools/actions
+#
+# For a list of all available plugins, check out
+#     https://docs.fastlane.tools/plugins/available-plugins
+
+# Uncomment the line if you want fastlane to automatically update itself
+# update_fastlane
+
+default_platform(:ios)
+
+platform :ios do
+  
+  # Configuration
+  before_all do
+    setup_ci if ENV['CI']
+    
+    # Ensure we have the latest fastlane version
+    # update_fastlane
+    
+    # Clear derived data
+    clear_derived_data
+  end
+
+  # Code Quality Lane
+  desc "Run all code quality checks"
+  lane :code_quality do
+    UI.header "🔍 Running Code Quality Checks"
+    
+    # SwiftLint
+    swiftlint(
+      mode: :lint,
+      output_file: "swiftlint-results.xml",
+      reporter: "junit",
+      config_file: ".swiftlint.yml",
+      strict: true
+    )
+    
+    # SwiftFormat check
+    sh("swiftformat --lint --reporter github-actions-log .")
+    
+    UI.success "✅ Code quality checks passed!"
+  end
+
+  # Code Formatting Lane
+  desc "Format code using SwiftFormat"
+  lane :format_code do
+    UI.header "🎨 Formatting Code"
+    
+    # Format code
+    sh("swiftformat .")
+    
+    UI.success "✅ Code formatting completed!"
+  end
+
+  # Unit Tests Lane
+  desc "Run unit tests"
+  lane :test_unit do
+    UI.header "🧪 Running Unit Tests"
+    
+    scan(
+      workspace: get_workspace_name,
+      scheme: get_scheme_name,
+      destination: "platform=iOS Simulator,name=iPhone 15,OS=17.2",
+      code_coverage: true,
+      derived_data_path: "DerivedData",
+      result_bundle: true,
+      output_directory: "test_output",
+      output_types: "html,junit",
+      fail_build: true,
+      clean: true
+    )
+    
+    # Generate code coverage report
+    slather(
+      workspace: get_workspace_name,
+      scheme: get_scheme_name,
+      output_directory: "test_output/coverage",
+      html: true,
+      show: true
+    )
+    
+    UI.success "✅ Unit tests completed!"
+  end
+
+  # UI Tests Lane
+  desc "Run UI tests"
+  lane :test_ui do
+    UI.header "🤖 Running UI Tests"
+    
+    scan(
+      workspace: get_workspace_name,
+      scheme: get_ui_test_scheme,
+      destination: "platform=iOS Simulator,name=iPhone 15,OS=17.2",
+      derived_data_path: "DerivedData",
+      result_bundle: true,
+      output_directory: "ui_test_output",
+      output_types: "html,junit",
+      fail_build: true,
+      clean: false
+    )
+    
+    UI.success "✅ UI tests completed!"
+  end
+
+  # Build for Testing Lane
+  desc "Build the app for testing"
+  lane :build_for_testing do
+    UI.header "🔨 Building for Testing"
+    
+    gym(
+      workspace: get_workspace_name,
+      scheme: get_scheme_name,
+      configuration: "Debug",
+      destination: "platform=iOS Simulator,name=iPhone 15,OS=17.2",
+      skip_package_ipa: true,
+      skip_archive: true,
+      derived_data_path: "DerivedData",
+      build_path: "build",
+      clean: true
+    )
+    
+    UI.success "✅ Build for testing completed!"
+  end
+
+  # Build Release Lane
+  desc "Build release version of the app"
+  lane :build_release do
+    UI.header "🚀 Building Release"
+    
+    # Increment build number
+    increment_build_number(
+      build_number: latest_testflight_build_number + 1
+    )
+    
+    # Build and archive
+    gym(
+      workspace: get_workspace_name,
+      scheme: get_scheme_name,
+      configuration: "Release",
+      clean: true,
+      export_method: "app-store",
+      export_options: {
+        uploadBitcode: false,
+        uploadSymbols: true,
+        compileBitcode: false,
+        signingStyle: "automatic",
+        teamID: ENV['APPLE_TEAM_ID']
+      },
+      output_directory: "build",
+      output_name: "#{get_app_name}.ipa"
+    )
+    
+    UI.success "✅ Release build completed!"
+  end
+
+  # Upload to TestFlight Lane
+  desc "Upload to TestFlight"
+  lane :upload_testflight do |options|
+    UI.header "☁️ Uploading to TestFlight"
+    
+    # Build release if not already built
+    build_release unless File.exist?("build/#{get_app_name}.ipa")
+    
+    # Upload to TestFlight
+    upload_to_testflight(
+      ipa: "build/#{get_app_name}.ipa",
+      skip_waiting_for_build_processing: options[:skip_waiting] || false,
+      changelog: options[:changelog] || "New build from CI/CD pipeline",
+      distribute_external: false,
+      notify_external_testers: false
+    )
+    
+    UI.success "✅ Upload to TestFlight completed!"
+  end
+
+  # Upload to App Store Lane
+  desc "Upload to App Store"
+  lane :upload_appstore do |options|
+    UI.header "🍎 Uploading to App Store"
+    
+    # Build release if not already built
+    build_release unless File.exist?("build/#{get_app_name}.ipa")
+    
+    # Upload to App Store
+    upload_to_app_store(
+      ipa: "build/#{get_app_name}.ipa",
+      force: true,
+      reject_if_possible: true,
+      skip_metadata: options[:skip_metadata] || false,
+      skip_screenshots: options[:skip_screenshots] || false,
+      submit_for_review: options[:submit_for_review] || false,
+      automatic_release: options[:automatic_release] || false,
+      precheck_include_in_app_purchases: false
+    )
+    
+    UI.success "✅ Upload to App Store completed!"
+  end
+
+  # Complete CI Lane
+  desc "Run complete CI pipeline"
+  lane :ci do
+    UI.header "🚦 Running Complete CI Pipeline"
+    
+    # Code quality checks
+    code_quality
+    
+    # Build for testing
+    build_for_testing
+    
+    # Run tests
+    test_unit
+    test_ui
+    
+    # Build release if on main branch
+    if git_branch == "main" || git_branch == "master"
+      build_release
+    end
+    
+    UI.success "✅ CI Pipeline completed successfully!"
+  end
+
+  # Release Pipeline Lane
+  desc "Run complete release pipeline"
+  lane :release do |options|
+    UI.header "🎯 Running Release Pipeline"
+    
+    # Ensure clean working directory
+    ensure_git_status_clean
+    
+    # Run CI first
+    ci
+    
+    # Tag version
+    version = get_version_number(
+      xcodeproj: get_project_name
+    )
+    
+    add_git_tag(
+      tag: "v#{version}",
+      message: "Release version #{version}"
+    )
+    
+    # Upload to TestFlight
+    upload_testflight(
+      changelog: options[:changelog] || "Release version #{version}"
+    )
+    
+    # Push tag
+    push_git_tags
+    
+    UI.success "✅ Release pipeline completed successfully!"
+  end
+
+  # Setup Match Lane
+  desc "Setup code signing with match"
+  lane :setup_signing do
+    match(
+      type: "appstore",
+      readonly: true
+    )
+    
+    match(
+      type: "development",
+      readonly: true
+    )
+  end
+
+  # Screenshots Lane
+  desc "Generate screenshots"
+  lane :screenshots do
+    capture_screenshots(
+      workspace: get_workspace_name,
+      scheme: get_ui_test_scheme,
+      output_directory: "screenshots",
+      clear_previous_screenshots: true,
+      override_status_bar: true,
+      add_photos: ["screenshots/background.jpg"],
+      add_videos: ["screenshots/demo.mov"],
+      localize_simulator: true
+    )
+    
+    frame_screenshots(
+      white: true,
+      path: "screenshots"
+    )
+  end
+
+  # Cleanup Lane
+  desc "Clean up build artifacts"
+  lane :cleanup do
+    UI.header "🧹 Cleaning up"
+    
+    clear_derived_data
+    
+    # Clean build directory
+    FileUtils.rm_rf("build") if Dir.exist?("build")
+    FileUtils.rm_rf("test_output") if Dir.exist?("test_output")
+    FileUtils.rm_rf("ui_test_output") if Dir.exist?("ui_test_output")
+    
+    UI.success "✅ Cleanup completed!"
+  end
+
+  # Error handling
+  after_all do |lane|
+    # This block is called, only if the executed lane was successful
+    notification(
+      title: "✅ Success",
+      message: "Successfully executed '#{lane}' lane"
+    )
+  end
+
+  error do |lane, exception|
+    # This block is called, only if the executed lane failed
+    notification(
+      title: "❌ Error",
+      message: "Lane '#{lane}' failed with exception: #{exception.message}"
+    )
+    
+    # Upload logs to crash reporting service
+    # crashlytics_upload_symbols if defined?(crashlytics_upload_symbols)
+  end
+
+  # Helper methods
+  private_lane :get_workspace_name do
+    workspace_files = Dir.glob("*.xcworkspace")
+    if workspace_files.any?
+      workspace_files.first
+    else
+      UI.user_error!("No .xcworkspace file found!")
+    end
+  end
+
+  private_lane :get_project_name do
+    project_files = Dir.glob("*.xcodeproj")
+    if project_files.any?
+      project_files.first
+    else
+      UI.user_error!("No .xcodeproj file found!")
+    end
+  end
+
+  private_lane :get_scheme_name do
+    # Try to get scheme from environment variable first
+    ENV['SCHEME'] || "YourAppScheme"
+  end
+
+  private_lane :get_ui_test_scheme do
+    # Try to get UI test scheme from environment variable first
+    ENV['UI_TEST_SCHEME'] || "YourAppUITests"
+  end
+
+  private_lane :get_app_name do
+    # Try to get app name from environment variable first
+    ENV['APP_NAME'] || "YourApp"
+  end
+end
